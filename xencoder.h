@@ -81,7 +81,7 @@ public:
         doc_type *dt = (doc_type*)this;
         dt->ArrayBegin(key, ext);
         for (size_t i=0; i<N; ++i) {
-            dt->encode(dt->IndexKey(i), val[i], ext);
+            dt->encode(dt->IndexKey(i), val[i], NULL);
         }
         dt->ArrayEnd(key, ext);
         return true;
@@ -122,7 +122,7 @@ public:
 
     // class/struct that defined macro XPACK
     template <class T>
-    typename x_enable_if<T::__x_pack_value&&!is_xpack_out<T>::value, bool>::type encode(const char*key, const T& val, const Extend *ext) {
+    typename x_enable_if<T::__x_pack_value&&!is_xpack_out<T>::value && !is_xpack_xtype<T>::value, bool>::type encode(const char*key, const T& val, const Extend *ext) {
         bool inherit = 0!=(X_PACK_CTRL_FLAG_INHERIT&Extend::CtrlFlag(ext));
         doc_type *dt = (doc_type*)this;
         if (!inherit) {
@@ -222,7 +222,7 @@ public:
         dt->ArrayBegin(key, ext);
         size_t i = 0;
         for (typename LIST::const_iterator it=val.begin(); it!=val.end(); ++it, ++i) {
-            dt->encode(dt->IndexKey(i), *it, ext);
+            dt->encode(dt->IndexKey(i), *it, NULL);
         }
         dt->ArrayEnd(key, ext);
         return true;
@@ -237,7 +237,7 @@ public:
         doc_type *dt = (doc_type*)this;
         dt->ObjectBegin(key, ext);
         for (typename Map::const_iterator it=val.begin(); it!=val.end(); ++it) {
-            dt->encode(convert(it->first).c_str(), it->second, ext);
+            dt->encode(convert(it->first).c_str(), it->second, NULL);
         }
         dt->ObjectEnd(key, ext);
         return true;
@@ -252,7 +252,7 @@ public:
         doc_type *dt = (doc_type*)this;
         dt->ObjectBegin(key, ext);
         for (typename Map::const_iterator it=val.begin(); it!=val.end(); ++it) {
-            dt->encode(convert(it.key()).c_str(), it.value(), ext);
+            dt->encode(convert(it.key()).c_str(), it.value(), NULL);
         }
         dt->ObjectEnd(key, ext);
         return true;

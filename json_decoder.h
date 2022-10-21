@@ -61,6 +61,7 @@ public:
         std::string data;
 
         do {
+            const unsigned int parseFlags = rapidjson::kParseNanAndInfFlag;
             if (isfile) {
                 std::ifstream fs(str.c_str(), std::ifstream::binary);
                 if (!fs) {
@@ -69,9 +70,9 @@ public:
                 }
                 std::string _tmp((std::istreambuf_iterator<char>(fs)), std::istreambuf_iterator<char>());
                 data.swap(_tmp);
-                _doc->Parse(data);
+                _doc->Parse<parseFlags>(data);
             } else  {
-                _doc->Parse(str);
+                _doc->Parse<parseFlags>(str);
             }
 
             if (_doc->HasParseError()) {
@@ -253,13 +254,13 @@ public:
 
     JsonDecoder& operator[](size_t index) {
         JsonDecoder *d = alloc();
-        member(index, *d);
+        member(index, *d, NULL);
         return *d;
     }
 
     JsonDecoder& operator[](const char*key) {
         JsonDecoder *d = alloc();
-        member(key, *d);
+        member(key, *d, NULL);
         return *d;
     }
 
@@ -278,7 +279,8 @@ private:
     JsonDecoder():xdoc_type(NULL, ""),_doc(NULL),_val(NULL) {
     }
 
-    JsonDecoder& member(size_t index, JsonDecoder&d) const {
+    JsonDecoder& member(size_t index, JsonDecoder&d, const Extend *ext) const {
+        (void)ext;
         if (NULL != _val && _val->IsArray()) {
             if (index < (size_t)_val->Size()) {
                 d.init_base(this, index);
@@ -293,7 +295,8 @@ private:
         return d;
     }
 
-    JsonDecoder& member(const char*key, JsonDecoder&d) const {
+    JsonDecoder& member(const char*key, JsonDecoder&d, const Extend *ext) const {
+        (void)ext;
         if (NULL != _val && _val->IsObject()) {
             rapidjson::Value::ConstMemberIterator iter;
             if (_val->MemberEnd()!=(iter=_val->FindMember(key)) && !(iter->value.IsNull())) {

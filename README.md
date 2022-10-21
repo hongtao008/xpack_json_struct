@@ -13,7 +13,6 @@ xpack
 * [继承](#继承)
 * [枚举](#枚举)
 * [自定义编解码](#自定义编解码)
-* [支持新类型](#支持新类型)
 * [不定类型](#不定类型)
 * [数组](#数组)
 * [第三方类和结构体](#第三方类和结构体)
@@ -89,8 +88,8 @@ FLAG
 - 用于变量名和key名不一致的场景
 - 格式是A(变量，别名....)或者AF(F(flags), 变量，别名....)，别名的格式是"x t:n"的格式
     - x表示全局别名，t表示类型(目前支持json、xml、bson)，n表示类型下的别名
-    - 全局别名可以没有，比如"json:_id"是合法的
-    - 类型别名可以没有，比如"_id"是合法的
+    - 全局别名可以没有，比如`json:_id`是合法的
+    - 类型别名可以没有，比如`_id`是合法的
     - 有类型别名优先用类型别名，否则用全局别名，都没有，则用变量名
 
 ``` C++
@@ -221,59 +220,29 @@ int main(int argc, char *argv[]) {
 
 自定义编解码
 ----
-应用场景：部分类型可能不想按结构体变量逐个编码，比如定义了一个时间结构体：
+应用场景
+- 有些基础类型想用自定义方式编码，比如用字符串的方式来编码整数/浮点数
+- 部分类型可能不想按结构体变量逐个编码，比如定义了一个时间结构体：
 ```C++
 struct Time {
     long ts; //unix timestamp
 };
 ```
-并不希望编码成{"ts":1218196800} 这种格式，而是希望编码成"2008-08-08 20:00:00"这种格式，这个时候就可以用自定义编解码实现。
+并不希望编码成{"ts":1218196800} 这种格式，而是希望编码成"2008-08-08 20:00:00"这种格式。
+
 这里有两种方式：
-- **推荐**用C来包含需要自定义编解码的变量（简称方法1）
-- 使用xtype（简称方法2）可以参考[例子](example/xtype.cpp)
+- 使用xtype，可以参考[例子](example/xtype.cpp)
+- 用C来包含需要自定义编解码的变量（下面简称C方法），可以参考[例子](example/custom.cpp)
 
 两种方法本质上都是自己去实现encode/decode，但是有以下区别：
-- 方法1能支持基本类型(int/string等）和非基本类型的自定义编解码；方法2只支持非基本类型的自定义编解码
-- 方法1是精细到变量级别，同样的类型，可以某个变量用自定义编解码，其他用默认编解码，方法2是类型级别，一旦某个类型定义了xtype，那该类型所有变量都用自定义编解码。
+- xtype是类型级别的，也就是一旦某个类型用xtype封装之后，那么自定义的encode/decode就对这个类型生效。xtype无法作用于基本类型（int/string等）
+- C方法能支持基本类型(int/string等）和非基本类型，但是仅作用于用C包含的变量，比如int a;int b; O(a), C(custome_int, F(0), b);那么a还是用默认的编解码，b才是用自定义的编解码。
 
-因此推荐方法1。方法1的实现可以参考该[例子](example/custom.cpp)。步骤有
-- 用C包含需要自定义编解码的变量：C(customcodec, F(flag1, flag2,...), member1, member2, ...)
-- 实现customcodec_encode和customcodec_decode函数。注意需要放到xpack这个namespace下
+1. xtype优先于XPACK宏，也就是定义了xtype的，会优先使用xtype的encode/decode
+2. C方法优先于xtype，也就是用C包含的变量，一定会用C里面指定的编解码方法。
 
+用这两个特性，可以实现一些比较灵活的编解码控制，比如这个[例子](example/xtype_advance.cpp)实现了一个根据变量情况来编码的功能，如果Sub.type==1则encode seq1，否则encode seq2. `__x_pack_decode`和`__x_pack_encode`是XPACK宏给结构体添加的decode/encode函数，自定义编解码函数可以通过这些函数调用xpack默认的编解码功能。
 
-支持新类型
-----
-- 可以用[自定义编解码](#自定义编解码)的机制来支持新类型，下面的例子是支持CString的方法
-``` C++
-namespace xpack { // must define in namespace xpack
-
-// implement decode
-template<class OBJ>
-bool cstring_decode(OBJ &obj, const char*key, CString &val, const Extend *ext) {
-    std::string str;
-    obj.decode(key, str, ext);
-    if (str.empty()) {
-        return false;
-    }
-
-    // TODO 把str转到val里面去
-    return true;
-}
-
-// implement encode
-template<class OBJ>
-bool cstring_encode(OBJ &obj, const char*key, const CString &val, const Extend *ext) {
-    std::string str;
-
-    // TODO 把val转到str里面去
-    return obj.encode(key, str, ext);
-}
-
-}
-
-// cstring类型的变量就可以这么包含
-// C(cstring, F(0), val1, val2, ...)
-```
 
 数组
 ----
@@ -375,21 +344,27 @@ int main(int argc, char *argv[]) {
 
 XML数组
 ----
-- 数组默认会用"x"作为标签，比如"ids":[1,2,3]，对应的xml是:
+- 数组默认会用变量名作为元素的标签，比如"ids":[1,2,3]，对应的xml是:
 ``` xml
 <ids>
-    <x>1</x>
-    <x>2</x>
-    <x>3</x>
+    <ids>1</ids>
+    <ids>2</ids>
+    <ids>3</ids>
 </ids>
 ```
-- 可以用别名的方式来控制数组的标签，比如A(ids,"xml:ids,vl@id")，vl后面跟着一个@xx，xx就是数组的标签，生成的结果就是：
+- 可以用别名的方式来控制数组的元素的标签，比如A(ids,"xml:ids,vl@id")，vl后面跟着一个@xx，xx就是数组的标签，生成的结果就是：
 ``` xml
 <ids>
     <id>1</id>
     <id>2</id>
     <id>3</id>
 </ids>
+```
+- 如果希望数组直接展开，而不是在外面包一层，可以用别名加"sbs"的flag来实现，比如A(ids, "xml:ids,sbs")，**注意，sbs标签仅能用于数组，其他地方使用可能会崩溃**
+``` xml
+<ids>1</ids>
+<ids>2</ids>
+<ids>3</ids>
 ```
 
 Qt支持
